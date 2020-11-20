@@ -6,10 +6,13 @@ import config
 class meow(discord.Client):
     def __init__(self):
         super().__init__()
+        self.futures = list()
 
         self.reg = {
             "cc":self.clearChannel,
             "dc":self.clearDM,
+            "stop":self.cancelFutures,
+            "!":self.cancelFutures,
         }
 
         # Globals
@@ -40,10 +43,15 @@ class meow(discord.Client):
         handler = self.reg.get(command[len(self.prefix):])
 
         if handler:
+            future = self.loop.create_task(self.invoke(handler,msg))
+            if handler != self.cancelFutures:
+                self.futures.append(future)
             try:
-                await self.invoke(handler,msg)
+                await future
             except Exception as e:
                 print(f"Exception in command '{command}' invokation {e.__class__.__qualname__} - {e}")
+            if handler != self.cancelFutures:
+                self.futures.remove(future)
 
     async def invoke(self,coro,msg):
         guild = msg.guild
@@ -81,6 +89,13 @@ class meow(discord.Client):
             except Exception:
                 print(f"Skipping '{m.content}' due to error")
         return True
+
+    async def cancelFutures(self,guild,channel,me):
+        futures = len(self.futures)
+        for future in self.futures:
+            future.cancel()
+            self.futures.remove(future)
+        await channel.send(f"\U00002714 - {futures} futures",delete_after=5)
 
     async def on_ready(self):
         if self.lock:
